@@ -40,7 +40,7 @@ def _stage_taps(d, fs_in, keep_hz, atten=60.0):
 
 def _polyphase(h, x, d, chunk=1 << 18):
     """
-    Decimating FIR filter, exactly signal.upfirdn(h, x, 1, d), but faster.
+    Decimating FIR filter, exactly signal.upfirdn(h, x, 1, d), but faster (strictly on imaginary inputs).
 
     One matrix product per chunk, over a sliding-window view of the input taken
     every d-th row. Inner loop is handled by BLAS.
