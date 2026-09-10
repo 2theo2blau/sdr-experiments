@@ -21,4 +21,6 @@ in one terminal (note: adjust frequencies to your specific channel), and
 ```
 dsd-fme -fs -i tcp -o pulse -P -7 decoded
 ```
-in another. You should hear DMR voice transmissions as they appear, and you will see them being written to your audio directory as well.
+in another. 
+
+You should hear DMR voice transmissions as they appear, and you will see them being written to your decoded audio directory as well. Note that the center frequency passed to `camp.py` is slightly off the center frequency of the capture, I found I got better results like this as the radio's DC spike isn't sitting right on the frequency we're trying to listen to.
