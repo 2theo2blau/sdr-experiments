@@ -21,7 +21,7 @@ FRS_GMRS = {
 }
 
 
-def detect(path, fmt, fs, fc, channels, nfft=4096, hop_blocks=64):
+def detect(path: str, fmt: str, fs: float, fc: float, channels: dict[str, float], nfft: int = 4096, hop_blocks: int = 64) -> tuple[np.ndarray, dict[str, np.ndarray], float]:
     """Pass 1: per-channel power over time, from averaged spectrogram blocks.
 
     Returns (times, {name: power_db_array}, noise_floor_db).
@@ -57,7 +57,7 @@ def detect(path, fmt, fs, fc, channels, nfft=4096, hop_blocks=64):
     return np.array(times), power, float(np.median(allp))
 
 
-def find_bursts(times, power_db, floor_db, thresh_db, min_len, max_gap):
+def find_bursts(times: np.ndarray, power_db: np.ndarray, floor_db: float, thresh_db: float, min_len: float, max_gap: float) -> list[tuple[float, float, float]]:
     """Group consecutive above-threshold frames into bursts."""
     if times.size < 2:
         return []
@@ -80,7 +80,7 @@ def find_bursts(times, power_db, floor_db, thresh_db, min_len, max_gap):
     return bursts
 
 
-def dedupe(cands, channels, guard=30000.0):
+def dedupe(cands: list[tuple[str, float, float, float]], channels: dict[str, float], guard: float = 30000.0) -> list[tuple[str, float, float, float]]:
     """
     Drop bleed into neighbouring channel bins
 
@@ -96,7 +96,7 @@ def dedupe(cands, channels, guard=30000.0):
     return out
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("capture")

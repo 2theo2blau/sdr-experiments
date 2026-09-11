@@ -8,7 +8,9 @@ import sys
 import threading
 import time
 import wave
+from collections.abc import Iterable, Iterator
 from fractions import Fraction
+from typing import Any, BinaryIO
 
 import numpy as np
 
@@ -25,7 +27,7 @@ OVERLAP_S = 0.05
 PROBE_S = 0.5 # slice of a block handed to the DMR health probe
 
 
-def plan(fs, out_rate, block_s, overlap_s=OVERLAP_S):
+def plan(fs: float, out_rate: float, block_s: float, overlap_s: float = OVERLAP_S) -> tuple[int, int, int]:
     """(decimation, block, overlap) in samples. Multiples of D so seams land on sample boundaries."""
     ratio = Fraction(out_rate / fs).limit_denominator(2000)
     if ratio.numerator != 1:
@@ -45,13 +47,13 @@ def plan(fs, out_rate, block_s, overlap_s=OVERLAP_S):
     return d, block, overlap
 
 
-def dc_estimate(raw):
+def dc_estimate(raw: np.ndarray) -> tuple[int, int]:
     """Mean I/Q, rounded to ADC granularity."""
     return (int(round(float(raw[0::2].mean()))),
             int(round(float(raw[1::2].mean()))))
 
 
-def remove_dc(raw, dc):
+def remove_dc(raw: np.ndarray, dc: tuple[int, int]) -> np.ndarray:
     """Subtract static DC from interleaved int8. Better not to camp on center."""
     if dc == (0, 0):
         return raw
@@ -61,8 +63,8 @@ def remove_dc(raw, dc):
     return np.clip(out, -127, 127).astype(RAW)
 
 
-def channel_stream(blocks, fs, offset_hz, out_rate, keep_hz, d, block, overlap,
-                   dc_block=True):
+def channel_stream(blocks: Iterable[np.ndarray], fs: float, offset_hz: float, out_rate: float, keep_hz: float, d: int, block: int, overlap: int,
+                   dc_block: bool = True) -> Iterator[tuple[np.ndarray, np.ndarray, float, tuple[float, float, int, int]]]:
     """
     Raw blocks -> (dev Hz, complex) chunks. Overlap-save. Emits a block once the 
     next one arrives.
@@ -98,12 +100,12 @@ def channel_stream(blocks, fs, offset_hz, out_rate, keep_hz, d, block, overlap,
             break
 
 
-def pcm16(x):
+def pcm16(x: np.ndarray) -> np.ndarray:
     """Scaled discriminator -> 16-bit samples."""
     return (np.clip(x, -1.0, 1.0) * 32767).astype("<i2")
 
 
-def front_end(raw):
+def front_end(raw: np.ndarray) -> tuple[float, float]:
     """
     ADC health from the raw block: (rms, clip fraction). rms << 127 = too quiet; 
     clip > ~1% = saturating.
@@ -116,7 +118,7 @@ def front_end(raw):
 class WavWriter:
     """16-bit mono WAV, no normalization."""
 
-    def __init__(self, path, rate):
+    def __init__(self, path: str, rate: float) -> None:
         d = os.path.dirname(path)
         if d:
             os.makedirs(d, exist_ok=True)
@@ -126,18 +128,18 @@ class WavWriter:
         self.w.setframerate(int(rate))
         self.frames = 0
 
-    def write(self, pcm):
+    def write(self, pcm: np.ndarray) -> None:
         self.w.writeframes(pcm.tobytes())
         self.frames += pcm.size
 
-    def close(self):
+    def close(self) -> None:
         self.w.close()
 
 
 class TcpSink:
     """TCP server for `dsd-fme -i tcp`. Raw le16 mono, no header. Slow clients get dropped."""
 
-    def __init__(self, port, host="127.0.0.1", depth=32, stats=None):
+    def __init__(self, port: int, host: str = "127.0.0.1", depth: int = 32, stats: dict[str, Any] | None = None) -> None:
         self.srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.srv.bind((host, port))
@@ -149,7 +151,7 @@ class TcpSink:
         self.lock = threading.Lock()
         threading.Thread(target=self._accept, daemon=True).start()
 
-    def _accept(self):
+    def _accept(self) -> None:
         while True:
             try:
                 sock, addr = self.srv.accept()
@@ -162,7 +164,7 @@ class TcpSink:
             threading.Thread(target=self._serve, args=(q, sock), daemon=True).start()
             sys.stderr.write(f"# tcp client connected from {addr[0]}:{addr[1]}\n")
 
-    def _serve(self, q, sock):
+    def _serve(self, q: queue.Queue, sock: socket.socket) -> None:
         try:
             while True:
                 buf = q.get()
@@ -177,7 +179,7 @@ class TcpSink:
             sock.close()
             sys.stderr.write("# tcp client gone\n")
 
-    def write(self, pcm):
+    def write(self, pcm: np.ndarray) -> None:
         buf = pcm.tobytes()
         with self.lock:
             qs = list(self.clients)
@@ -187,11 +189,11 @@ class TcpSink:
             except queue.Full:
                 self.stats["tcp_dropped"] += 1
 
-    def count(self):
+    def count(self) -> int:
         with self.lock:
             return len(self.clients)
 
-    def close(self):
+    def close(self) -> None:
         with self.lock:
             qs = list(self.clients)
         for q in qs:
@@ -202,7 +204,7 @@ class TcpSink:
         self.srv.close()
 
 
-def reader(stdin, nbytes, blocks, stats):
+def reader(stdin: BinaryIO, nbytes: int, blocks: queue.Queue, stats: dict[str, Any]) -> None:
     """stdin -> queue. Must not block for 1 second or hackrf_transfer dies."""
     try:
         import fcntl
@@ -230,7 +232,7 @@ def reader(stdin, nbytes, blocks, stats):
     blocks.put(None)
 
 
-def stdin_blocks(nbytes, stats, maxsize=8):
+def stdin_blocks(nbytes: int, stats: dict[str, Any], maxsize: int = 8) -> Iterator[np.ndarray]:
     """Blocks read from a live pipe, on their own thread."""
     q = queue.Queue(maxsize=maxsize)
     t = threading.Thread(target=reader, args=(sys.stdin.buffer, nbytes, q, stats),
@@ -243,7 +245,7 @@ def stdin_blocks(nbytes, stats, maxsize=8):
         yield np.frombuffer(buf, dtype=RAW)
 
 
-def file_blocks(path, nbytes, pace_s=0.0):
+def file_blocks(path: str, nbytes: int, pace_s: float = 0.0) -> Iterator[np.ndarray]:
     """Same blocks from a recorded capture."""
     with open(path, "rb") as fh:
         t = time.perf_counter()
@@ -257,7 +259,7 @@ def file_blocks(path, nbytes, pace_s=0.0):
             yield np.frombuffer(buf, dtype=RAW)
 
 
-def probe(y, fs, seconds=PROBE_S):
+def probe(y: np.ndarray, fs: float, seconds: float = PROBE_S) -> dict[str, float] | None:
     """DMR health check. trim=False so quiet stretches don't look empty."""
     n = min(y.size, int(seconds * fs))
     if n < 1000:
@@ -266,7 +268,7 @@ def probe(y, fs, seconds=PROBE_S):
     return {"syncs": len(r["syncs"]), "eye": r["eye"]}
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.strip().split("\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-f", "--center", type=float, required=True,

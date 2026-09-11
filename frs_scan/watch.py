@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 from datetime import datetime
+from typing import Any, BinaryIO
 
 import numpy as np
 
@@ -16,7 +17,7 @@ from frs_scan.iq import RAW, write_cs8, write_wav
 from frs_scan.nfm import AUDIO_RATE, CHAN_RATE, KEEP_HZ, demod_nfm
 
 
-def parse_ranges(spec):
+def parse_ranges(spec: str | None) -> list[tuple[float, float]]:
     """'470-480,462.36' -> [(lo, hi), ...] in Hz. Bare values get +/-10 kHz."""
     out = []
     for tok in filter(None, (spec or "").split(",")):
@@ -36,12 +37,12 @@ def parse_ranges(spec):
 class Ring:
     """Fixed-size ring of raw interleaved bytes, addressed by sample index."""
 
-    def __init__(self, capacity_samples):
+    def __init__(self, capacity_samples: float) -> None:
         self.cap = int(capacity_samples)
         self.buf = np.zeros(self.cap * 2, dtype=RAW)
         self.total = 0 # samples ever written
 
-    def push(self, raw):
+    def push(self, raw: np.ndarray) -> None:
         n = raw.size // 2
         if n >= self.cap:
             self.buf[:] = raw[-self.cap * 2:]
@@ -57,7 +58,7 @@ class Ring:
             self.buf[: end - self.buf.size] = raw[k:]
         self.total += n
 
-    def runs(self, start, stop):
+    def runs(self, start: int, stop: int) -> list[np.ndarray] | None:
         """Samples [start, stop) as one or two contiguous views, or None."""
         oldest = max(0, self.total - self.cap)
         if start < oldest or stop > self.total or stop <= start:
@@ -68,13 +69,13 @@ class Ring:
             return [self.buf[p:end]]
         return [self.buf[p:], self.buf[:end - self.buf.size]]
 
-    def get(self, start, stop):
+    def get(self, start: int, stop: int) -> np.ndarray | None:
         """Samples [start, stop) copied out by absolute index, or None."""
         parts = self.runs(start, stop)
         return None if parts is None else np.concatenate(parts)
 
 
-def channelize(parts, fs, offset_hz, out_rate, keep_hz=KEEP_HZ):
+def channelize(parts: list[np.ndarray], fs: float, offset_hz: float, out_rate: float, keep_hz: float = KEEP_HZ) -> tuple[np.ndarray, float]:
     """extract_channel_raw across the ring's one or two contiguous runs."""
     ys, n0 = [], 0
     for part in parts:
@@ -85,7 +86,7 @@ def channelize(parts, fs, offset_hz, out_rate, keep_hz=KEEP_HZ):
     return (ys[0] if len(ys) == 1 else np.concatenate(ys)), cfs
 
 
-def reader(stdin, ring, nbytes, frames, stats):
+def reader(stdin: BinaryIO, ring: Ring, nbytes: int, frames: queue.Queue, stats: dict[str, Any]) -> None:
     """
     Drain stdin into the ring forever, whatever else is going on.
 
@@ -122,7 +123,7 @@ def reader(stdin, ring, nbytes, frames, stats):
     frames.put(None)
 
 
-def group_bins(mask, min_bins, gap):
+def group_bins(mask: np.ndarray, min_bins: int, gap: int) -> list[tuple[int, int]]:
     """Contiguous runs of True, merging gaps up to `gap` bins."""
     idx = np.flatnonzero(mask)
     if idx.size == 0:
@@ -137,7 +138,7 @@ def group_bins(mask, min_bins, gap):
     return groups
 
 
-def main():
+def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("-f", "--center", type=float, required=True, help="Hz")

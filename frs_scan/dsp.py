@@ -5,7 +5,7 @@ import numpy as np
 from scipy import signal
 
 
-def decim_stages(d, cap=25):
+def decim_stages(d: int, cap: int = 25) -> list[int]:
     """
     Split a decimation factor into stages of at most `cap`.
     """
@@ -22,7 +22,7 @@ def decim_stages(d, cap=25):
     return stages or [1]
 
 
-def _stage_taps(d, fs_in, keep_hz, atten=60.0):
+def _stage_taps(d: int, fs_in: float, keep_hz: float, atten: float = 60.0) -> np.ndarray:
     """
     Anti-alias FIR for one decimation stage.
 
@@ -38,7 +38,7 @@ def _stage_taps(d, fs_in, keep_hz, atten=60.0):
     return signal.firwin(n, (wp + ws) / 2, window=("kaiser", beta)).astype(np.float32)
 
 
-def _polyphase(h, x, d, chunk=1 << 18):
+def _polyphase(h: np.ndarray, x: np.ndarray, d: int, chunk: int = 1 << 18) -> np.ndarray:
     """
     Decimating FIR filter, exactly signal.upfirdn(h, x, 1, d), but faster (strictly on imaginary inputs).
 
@@ -60,7 +60,7 @@ def _polyphase(h, x, d, chunk=1 << 18):
     return out
 
 
-def _decimate(x, fs, stages, keep_hz):
+def _decimate(x: np.ndarray, fs: float, stages: list[int], keep_hz: float) -> np.ndarray:
     for d in stages:
         if d > 1:
             x = _polyphase(_stage_taps(d, fs, keep_hz), x, d)
@@ -71,7 +71,7 @@ def _decimate(x, fs, stages, keep_hz):
 LO_TABLE = 1 << 16       # see _mix
 
 
-def _mix(raw, fs, offset_hz, n0, table=LO_TABLE):
+def _mix(raw: np.ndarray, fs: float, offset_hz: float, n0: int, table: int = LO_TABLE) -> np.ndarray:
     """
     Interleaved int8 -> complex64, mixed down by offset_hz.
 
@@ -92,7 +92,7 @@ def _mix(raw, fs, offset_hz, n0, table=LO_TABLE):
 
 
 @lru_cache(maxsize=64)
-def _lo_period(k, table):
+def _lo_period(k: int, table: int) -> np.ndarray | None:
     """
     One period of exp(2j*pi*k*n/table), or None when k is 0.
 
@@ -108,7 +108,7 @@ def _lo_period(k, table):
     return period
 
 
-def _apply_lo(x, period, n0):
+def _apply_lo(x: np.ndarray, period: np.ndarray, n0: int) -> np.ndarray:
     """
     Multiply x in place by the tiled oscillator, starting at absolute n0.
     """
@@ -121,7 +121,7 @@ def _apply_lo(x, period, n0):
     return x
 
 
-def _channel_filter(y, fs_out, keep_hz, ntaps=129):
+def _channel_filter(y: np.ndarray, fs_out: float, keep_hz: float, ntaps: int = 129) -> np.ndarray:
     """
     Final channel filter at +/-keep_hz, on the already-decimated signal.
 
@@ -131,7 +131,7 @@ def _channel_filter(y, fs_out, keep_hz, ntaps=129):
     return signal.lfilter(taps, 1.0, y).astype(np.complex64)[taps.size:]
 
 
-def extract_channel(x, fs, offset_hz, out_rate, keep_hz):
+def extract_channel(x: np.ndarray, fs: float, offset_hz: float, out_rate: float, keep_hz: float) -> tuple[np.ndarray, float]:
     """
     Mix `offset_hz` down to DC, band-limit, and decimate towards out_rate.
 
@@ -151,8 +151,8 @@ def extract_channel(x, fs, offset_hz, out_rate, keep_hz):
     return _channel_filter(y, fs_out, keep_hz), fs_out
 
 
-def extract_channel_raw(raw, fs, offset_hz, out_rate, keep_hz,
-                        n_start=0, block_samples=1 << 20):
+def extract_channel_raw(raw: np.ndarray, fs: float, offset_hz: float, out_rate: float, keep_hz: float,
+                        n_start: int = 0, block_samples: int = 1 << 20) -> tuple[np.ndarray, float]:
     """
     extract_channel straight off interleaved int8, in bounded memory.
 

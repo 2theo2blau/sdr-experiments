@@ -13,7 +13,7 @@ FORMATS = {
 RAW = np.int8 # hackrf adc is 8 bit
 
 
-def load_iq(path, fmt, offset_samples=0, count=None):
+def load_iq(path: str, fmt: str, offset_samples: int = 0, count: int | None = None) -> np.ndarray:
     """Read interleaved IQ from disk as complex64."""
     dtype, scale = FORMATS[fmt]
     itemsize = np.dtype(dtype).itemsize
@@ -26,12 +26,12 @@ def load_iq(path, fmt, offset_samples=0, count=None):
     return (iq[0::2] + 1j * iq[1::2]).astype(np.complex64) / scale
 
 
-def file_length(path, fmt):
+def file_length(path: str, fmt: str) -> int:
     dtype, _ = FORMATS[fmt]
     return os.path.getsize(path) // (2 * np.dtype(dtype).itemsize)
 
 
-def write_cs8(path, x):
+def write_cs8(path: str, x: np.ndarray) -> None:
     """Complex baseband -> interleaved int8, scaled to leave headroom."""
     peak = max(float(np.max(np.abs(x.real))), float(np.max(np.abs(x.imag))), 1.0)
     scale = 100.0 / peak
@@ -41,7 +41,7 @@ def write_cs8(path, x):
     out.tofile(path)
 
 
-def write_wav(path, audio, rate):
+def write_wav(path: str, audio: np.ndarray, rate: float) -> None:
     """Mono 16-bit WAV, peak-normalized to 0.89 of full scale."""
     peak = np.max(np.abs(audio)) or 1.0
     pcm = np.clip(audio / peak * 0.89, -1, 1)

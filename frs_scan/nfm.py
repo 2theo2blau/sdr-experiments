@@ -14,7 +14,7 @@ DEVIATION = 2500.0 # nominal peak deviation
 DEEMPH = 750e-6 # land mobile is 750 us
 
 
-def longest_run(mask):
+def longest_run(mask: np.ndarray) -> slice | None:
     """Slice covering the longest contiguous True run, or None."""
     if not mask.any():
         return None
@@ -24,7 +24,7 @@ def longest_run(mask):
     return slice(int(starts[i]), int(stops[i]))
 
 
-def burst_body(env, fs, smooth_s=0.01, min_frac=0.1):
+def burst_body(env: np.ndarray, fs: float, smooth_s: float = 0.01, min_frac: float = 0.1) -> slice:
     """Slice covering the stretch where the carrier is actually up."""
     n = env.size
     k = max(1, int(fs * smooth_s))
@@ -42,7 +42,7 @@ def burst_body(env, fs, smooth_s=0.01, min_frac=0.1):
         return slice(0, n)
     return slice(a, b)
 
-def demod_nfm(y, fs, audio_rate=AUDIO_RATE, deviation=DEVIATION, deemph=DEEMPH):
+def demod_nfm(y: np.ndarray, fs: float, audio_rate: float = AUDIO_RATE, deviation: float = DEVIATION, deemph: float = DEEMPH) -> np.ndarray:
     """
     Channelized baseband -> audio.
 

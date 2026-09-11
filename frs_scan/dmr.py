@@ -1,4 +1,5 @@
 from fractions import Fraction
+from typing import Any
 
 import numpy as np
 from scipy import signal
@@ -44,7 +45,7 @@ DATA_TYPES = {
 
 # DEMODULATION
 
-def discriminator(y, fs):
+def discriminator(y: np.ndarray, fs: float) -> np.ndarray:
     """
     Channelized baseband -> instantaneous frequency in Hz.
 
@@ -54,7 +55,7 @@ def discriminator(y, fs):
     return d * (fs / (2 * np.pi))
 
 
-def matched_filter(f, fs, baud=BAUD, cutoff_frac=1.15):
+def matched_filter(f: np.ndarray, fs: float, baud: float = BAUD, cutoff_frac: float = 1.15) -> np.ndarray:
     """
     Band limit the discriminator output to the symbol rate.
 
@@ -66,14 +67,14 @@ def matched_filter(f, fs, baud=BAUD, cutoff_frac=1.15):
     return signal.lfilter(taps, 1.0, f)[taps.size // 2:].astype(np.float32)
 
 
-def _interp(x, t):
+def _interp(x: np.ndarray, t: float) -> float:
     """Linearly interpolate x at fractional index t."""
     i = int(t)
     a = t - i
     return x[i] * (1.0 - a) + x[i + 1] * a
 
 
-def symbol_clock(x, sps=2.0, kp=0.02, ki=1e-4, max_drift=0.01):
+def symbol_clock(x: np.ndarray, sps: float = 2.0, kp: float = 0.02, ki: float = 1e-4, max_drift: float = 0.01) -> tuple[np.ndarray, np.ndarray]:
     """
     Gardner timing recovery on a real signal at `sps` samples per symbol.
 
@@ -104,7 +105,7 @@ def symbol_clock(x, sps=2.0, kp=0.02, ki=1e-4, max_drift=0.01):
     return np.asarray(out, dtype=np.float32), np.asarray(times)
 
 
-def symbol_stream(y, fs, baud=BAUD):
+def symbol_stream(y: np.ndarray, fs: float, baud: float = BAUD) -> np.ndarray:
     """
     Channelized baseband -> one sample per symbol, in Hz of deviation.
 
@@ -120,7 +121,7 @@ def symbol_stream(y, fs, baud=BAUD):
     return s
 
 
-def levels(s):
+def levels(s: np.ndarray) -> np.ndarray:
     """
     Center and scale a symbol stream so the outer levels sit at +/-3.
 
@@ -136,13 +137,13 @@ def levels(s):
     return ((s - mid) / (half + 1e-20) * 3.0).astype(np.float32)
 
 
-def slice_dibits(x):
+def slice_dibits(x: np.ndarray) -> np.ndarray:
     """Four-level slicer: normalized symbols -> dibits."""
     idx = 3 - np.digitize(x, [-2.0, 0.0, 2.0])
     return DIBITS[idx]
 
 
-def eye_quality(x):
+def eye_quality(x: np.ndarray) -> float:
     """
     Mean distance from a symbol to its level, in units where the levels are 2
     apart. Below about 0.25 the dibits are worth trusting.
@@ -155,7 +156,7 @@ def eye_quality(x):
 
 # FRAMING
 
-def _hex_to_dibits(h):
+def _hex_to_dibits(h: str) -> np.ndarray:
     bits = bin(int(h, 16))[2:].zfill(len(h) * 4)
     return np.array([int(bits[i:i + 2], 2) for i in range(0, len(bits), 2)],
                     dtype=np.uint8)
@@ -164,7 +165,7 @@ def _hex_to_dibits(h):
 SYNC_DIBITS = {name: _hex_to_dibits(h) for h, name in SYNCS.items()}
 
 
-def find_syncs(dibits, max_errors=2):
+def find_syncs(dibits: np.ndarray, max_errors: int = 2) -> list[tuple[int, str]]:
     """
     Every sync pattern in the stream, as (index, name).
 
@@ -182,14 +183,14 @@ def find_syncs(dibits, max_errors=2):
     return sorted(hits)
 
 
-def _dibits_to_int(d):
+def _dibits_to_int(d: np.ndarray) -> int:
     v = 0
     for x in d:
         v = (v << 2) | int(x)
     return v
 
 
-def slot_type(dibits, sync_at):
+def slot_type(dibits: np.ndarray, sync_at: int) -> dict[str, int | str] | None:
     """
     The color code and data type on either side of a sync, as a dict, or None.
 
@@ -208,7 +209,7 @@ def slot_type(dibits, sync_at):
             "data_type_name": DATA_TYPES.get(dt, f"reserved {dt}")}
 
 
-def frame_bursts(dibits, syncs=None):
+def frame_bursts(dibits: np.ndarray, syncs: list[tuple[int, str]] | None = None) -> list[dict[str, Any]]:
     """
     Cut the stream into 144-symbol bursts on the grid the syncs imply.
 
@@ -235,7 +236,7 @@ def frame_bursts(dibits, syncs=None):
     return out
 
 
-def demod_dmr(y, fs, baud=BAUD, trim=True):
+def demod_dmr(y: np.ndarray, fs: float, baud: float = BAUD, trim: bool = True) -> dict[str, Any]:
     """
     Channelized baseband -> symbols, dibits and bursts.
 

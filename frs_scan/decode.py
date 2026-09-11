@@ -4,6 +4,7 @@ import glob
 import os
 import re
 from fractions import Fraction
+from typing import Any
 
 import numpy as np
 from scipy import signal
@@ -41,13 +42,13 @@ SLOT_STRIDE = 2
 IDLE_MAX_ERRORS = 20
 
 
-def _bits(dibits):
+def _bits(dibits: np.ndarray) -> np.ndarray:
     """144 dibits -> 288 bits."""
     b = dibits.astype(np.uint8).reshape(-1, 1) << 6
     return np.unpackbits(b, axis=1)[:, :2].ravel()
 
 
-def info_field(dibits):
+def info_field(dibits: np.ndarray) -> np.ndarray | None:
     """The 196 information bits of a burst."""
     if dibits.size < 144:
         return None
@@ -55,7 +56,7 @@ def info_field(dibits):
     return np.concatenate((b[INFO_A], b[INFO_B]))
 
 
-def voice_frames(dibits):
+def voice_frames(dibits: np.ndarray) -> np.ndarray | None:
     """Three AMBE+2 frames from a voice burst, as a 3x72 bit array."""
     if dibits.size < 144:
         return None
@@ -65,7 +66,7 @@ def voice_frames(dibits):
                      b[VOICE_3]))
 
 
-def voice_superframes(bursts):
+def voice_superframes(bursts: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
     """
     Runs of six voice bursts, one per sync that says voice.
 
@@ -90,7 +91,7 @@ def voice_superframes(bursts):
     return out
 
 
-def write_ambe(path, frames):
+def write_ambe(path: str, frames: list[np.ndarray]) -> int:
     """
     AMBE+2 frames
 
@@ -107,7 +108,7 @@ def write_ambe(path, frames):
     return packed.shape[0]
 
 
-def discriminator_wav(y, fs, inverted=False, rate=DISC_RATE):
+def discriminator_wav(y: np.ndarray, fs: float, inverted: bool = False, rate: float = DISC_RATE) -> np.ndarray:
     """
     Channelized baseband -> the FM-demodulated WAV dsd-fme expects.
 
@@ -127,7 +128,7 @@ def discriminator_wav(y, fs, inverted=False, rate=DISC_RATE):
     return scale_discriminator(f)
 
 
-def scale_discriminator(f):
+def scale_discriminator(f: np.ndarray) -> np.ndarray:
     """
     Deviation in Hz -> WAV sample values
 
@@ -137,19 +138,19 @@ def scale_discriminator(f):
     return np.clip(f / (2.0 * DEV_OUTER), -1.0, 1.0).astype(np.float32)
 
 
-def idle_errors(info):
+def idle_errors(info: np.ndarray) -> int:
     """Bit distance from a burst's info field to the idle pattern."""
     ref = np.unpackbits(np.frombuffer(IDLE_INFO, np.uint8))[:INFO_BITS]
     return int(np.count_nonzero(info != ref))
 
 
-def is_idle(info, max_errors=IDLE_MAX_ERRORS):
+def is_idle(info: np.ndarray, max_errors: int = IDLE_MAX_ERRORS) -> bool:
     return idle_errors(info) <= max_errors
 
 
 # ENCRYPTION
 
-def encryption_status(bursts):
+def encryption_status(bursts: list[dict[str, Any]]) -> dict[str, str | None]:
     """
     Check for encryption signalling. *Does not decrypt anything*.
 
@@ -173,7 +174,7 @@ def encryption_status(bursts):
 
 # PER CAPTURE
 
-def analyse(path, rate=CHAN_RATE, max_errors=IDLE_MAX_ERRORS):
+def analyse(path: str, rate: float = CHAN_RATE, max_errors: int = IDLE_MAX_ERRORS) -> dict[str, Any]:
     """One capture -> its DMR content."""
     y = load_iq(path, "cs8")
     r = demod_dmr(y, rate)
@@ -211,11 +212,11 @@ def analyse(path, rate=CHAN_RATE, max_errors=IDLE_MAX_ERRORS):
     return out
 
 
-def is_interesting(a):
+def is_interesting(a: dict[str, Any]) -> bool:
     return bool(a.get("dmr")) and (a.get("traffic") or a.get("voice"))
 
 
-def save_discriminator(a, wav_dir):
+def save_discriminator(a: dict[str, Any], wav_dir: str) -> str | None:
     """
     Write the capture as a 48 kHz WAV for dsd-fme, whatever it contains.
 
@@ -231,7 +232,7 @@ def save_discriminator(a, wav_dir):
     return path
 
 
-def save_voice(a, audio_dir):
+def save_voice(a: dict[str, Any], audio_dir: str) -> str | None:
     """
     Write the AMBE frames of an unencrypted capture.
 
@@ -254,7 +255,7 @@ def save_voice(a, audio_dir):
 
 # REPORTING
 
-def describe(a):
+def describe(a: dict[str, Any]) -> str:
     name = os.path.basename(a["path"])
     freq = re.search(r"_([\d.]+)MHz", name)
     lines = [name]
@@ -280,7 +281,7 @@ def describe(a):
     return "\n".join(lines)
 
 
-def debug_slot_types(a):
+def debug_slot_types(a: dict[str, Any]) -> str:
     """Raw 20-bit slot type per burst."""
     rows = []
     for b in a.get("_bursts", []):
@@ -291,7 +292,7 @@ def debug_slot_types(a):
     return "\n".join(rows)
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser(description=__doc__.strip().split("\n")[0])
     ap.add_argument("path", nargs="?", default="hits",
                     help="directory of captures, or a single .iq file")

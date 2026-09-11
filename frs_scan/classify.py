@@ -1,3 +1,5 @@
+import argparse
+
 import numpy as np
 from scipy import signal
 
@@ -5,7 +7,7 @@ from frs_scan.nfm import AUDIO_RATE, DEVIATION, burst_body
 
 # ---------------------------------------------------------------- features
 
-def carrier_stats(y, fs, deviation=DEVIATION, body=None):
+def carrier_stats(y: np.ndarray, fs: float, deviation: float = DEVIATION, body: slice | None = None) -> dict[str, float]:
     """
     Checks if there is a carrier, and if it is multi-level.
 
@@ -31,7 +33,7 @@ def carrier_stats(y, fs, deviation=DEVIATION, body=None):
     return {"env_cv": env_cv, "kurt": kurt}
 
 
-def spectral_flatness(x, fs, lo=300.0, hi=3400.0):
+def spectral_flatness(x: np.ndarray, fs: float, lo: float = 300.0, hi: float = 3400.0) -> float:
     """Geometric/arithmetic mean of the PSD in a band. 1.0 = white noise."""
     if x.size < 512:
         return 1.0
@@ -43,7 +45,7 @@ def spectral_flatness(x, fs, lo=300.0, hi=3400.0):
     return float(np.exp(np.mean(np.log(p))) / np.mean(p))
 
 
-def voiced_fraction(audio, fs, lo_hz=80.0, hi_hz=300.0, peak=0.35, win_s=0.04):
+def voiced_fraction(audio: np.ndarray, fs: float, lo_hz: float = 80.0, hi_hz: float = 300.0, peak: float = 0.35, win_s: float = 0.04) -> float:
     """
     Share of audio frames carrying a clear pitch.
 
@@ -71,7 +73,7 @@ def voiced_fraction(audio, fs, lo_hz=80.0, hi_hz=300.0, peak=0.35, win_s=0.04):
     return float(np.mean(ac[:, lags].max(axis=1) > peak))
 
 
-def tone_fraction(audio, fs, lo=200.0, hi=3800.0, width=100.0):
+def tone_fraction(audio: np.ndarray, fs: float, lo: float = 200.0, hi: float = 3800.0, width: float = 100.0) -> float:
     """
     Share of audio power within +/-width of the single strongest peak.
 
@@ -88,7 +90,7 @@ def tone_fraction(audio, fs, lo=200.0, hi=3800.0, width=100.0):
     return float(p[near].sum() / (p.sum() + 1e-20))
 
 
-def syllabic_ratio(audio, fs):
+def syllabic_ratio(audio: np.ndarray, fs: float) -> float:
     """
     Share of the audio envelope's modulation energy at speech rates.
 
@@ -111,7 +113,7 @@ def syllabic_ratio(audio, fs):
     return float(band / (total + 1e-20))
 
 
-def features(y, fs, audio, audio_rate=AUDIO_RATE, deviation=DEVIATION):
+def features(y: np.ndarray, fs: float, audio: np.ndarray, audio_rate: float = AUDIO_RATE, deviation: float = DEVIATION) -> dict[str, float]:
     """
     All features from one burst.
 
@@ -142,7 +144,7 @@ SYLLABIC_CUT = 0.40
 ALL_KINDS = ("voice", "morse", "digital", "noise")
 
 
-def prescreen(feats, cv_cut=CV_CUT):
+def prescreen(feats: dict[str, float], cv_cut: float = CV_CUT) -> str | None:
     """
     Short probe verdict, or None if it needs the full demod.
 
@@ -153,8 +155,8 @@ def prescreen(feats, cv_cut=CV_CUT):
     return None
 
 
-def classify(feats, digital_cut=DIGITAL_CUT, cv_cut=CV_CUT,
-             flat_min=FLAT_MIN, voiced_cut=VOICED_CUT, tone_cut=TONE_CUT):
+def classify(feats: dict[str, float], digital_cut: float = DIGITAL_CUT, cv_cut: float = CV_CUT,
+             flat_min: float = FLAT_MIN, voiced_cut: float = VOICED_CUT, tone_cut: float = TONE_CUT) -> str:
     """
     Four checks: is there a carrier, is it data, is it a keyed tone, and does it sound like a voice.
     """
@@ -174,7 +176,7 @@ def classify(feats, digital_cut=DIGITAL_CUT, cv_cut=CV_CUT,
     return "voice"
 
 
-def keep_set(name):
+def keep_set(name: str) -> set[str]:
     """
     --keep choice -> the set of classify() results worth writing
     """
@@ -191,7 +193,7 @@ def keep_set(name):
     return kinds
 
 
-def add_classifier_args(ap):
+def add_classifier_args(ap: argparse.ArgumentParser) -> argparse.ArgumentParser:
     """Add the five threshold overrides to an ArgumentParser"""
     ap.add_argument("--digital-cut", type=float, default=DIGITAL_CUT,
                     help="kurtosis below which a burst is called digital")
@@ -206,7 +208,7 @@ def add_classifier_args(ap):
     return ap
 
 
-def cut_kwargs(args):
+def cut_kwargs(args: argparse.Namespace) -> dict[str, float]:
     """The parsed threshold overrides, as classify()/prescreen() keywords."""
     return dict(digital_cut=args.digital_cut, cv_cut=args.cv_cut,
                 flat_min=args.flat_min, voiced_cut=args.voiced_cut,
